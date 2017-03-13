@@ -5,13 +5,15 @@ globals [
   Ave-Reputation     ;
   R_initial          ;rain time step before to define auto correlation
   L                  ;total proportion of labor =1
-  N_Contracts        ;number of fulfilled contracts per year
+  N_CC        ;number of fulfilled contracts per year
   N_DD               ;;number of intances with decition DD
   N_CD               ;;number of intances with decition CD
   N_DC               ;;number of intances with decition DC
   p_rain             ;information farmers have about the probability of next rainfall (good or bad year)
-  T_contracts        ;;total number of fulfilled agreements
+  T_CC        ;;total number of fulfilled agreements
   T_CD               ;;total number of defections
+  T_DD               ;;total number of agreement to not cooperate
+  T_DC               ;;total number of help without agreement
 
   T_labor_off_farm
   c_p                ;;prospect theory parameter
@@ -24,7 +26,7 @@ globals [
   vf_Dc
   vf_Dd
   counts
-Ccoef ;clustering coeficient
+  Ccoef ;clustering coeficient
 ]
 
 ;###############################################################################################################
@@ -52,8 +54,8 @@ Comunidad-own[
 
 ;###############################################################################################################
 friends-own[
-  p                           ;;probablity of maintaining the friendship link
-  trust                       ;trust end1 has on end2 of link friend(end1 end2)
+  p                           ;;image probablity
+  trust                       ;trust household 1(end1) has on housend2 of link friend(end1 end2)
 ]
 
 
@@ -62,7 +64,6 @@ contracts-own[
 ]
 
 Ncontracts-own[
-
   N-time-parners              ;number of time families linked by a friendship engaged in labor-sharing
 ]
 ;###############################################################################################################
@@ -72,7 +73,7 @@ to setup
 
   set R_initial 1
   ifelse enviromental-information = "yes"[set p_rain p_good][set p_rain 0.5]    ;;yes if farmers know the probability of a good year
-  set N_Contracts 0
+  set N_CC 0
   set N_CD 0
                                                          ;;initial contracts=0
   set L 1
@@ -84,7 +85,7 @@ end
 
 ;###############################################################################################################
 to create-community
-  create-Comunidad 40 [                                                                       ;create families
+  create-Comunidad 40 [                                                                       ;create households agents
     setxy random-ycor random-xcor                                                             ;located them any place in the landscape
     set productivity (1 + random-normal 1 variability-Land-productivity)                      ;set productivity of the land
     ifelse (productivity < 0.1)[set productivity 0.1][set productivity productivity]          ;set productivity to be > 0.1
@@ -119,6 +120,7 @@ end
 
 ;###############################################################################################################
 to make-rain
+  ;
   ifelse random-float 1 > temp_corr[
     let R_max ifelse-value ((1 + var_R) < 2) [1 + var_R][2]
     let R_min ifelse-value ((1 - var_R) > 0) [1 - var_R][0]
@@ -132,7 +134,7 @@ end
 
 ;###############################################################################################################
 to make-agreements
-
+;
   ask Comunidad [
     if current-partner-contract = "N"[
       let cc max-one-of my-out-friends with [[current-partner-contract] of end2 = "N"] [p]
@@ -353,7 +355,6 @@ to update-SCORE-trust
         set trust precision ((1 - trust-decay) * trust + trust-decay * [score] of end2) 2
       ]
 
-
       ask friends [
         set p importance_trust * trust  + (1 - importance_trust) * [reputation] of end2
 
@@ -378,6 +379,7 @@ to update-payoff
       if [Final_action] of other-end = "D" and Final_action = "D"[
         set Wealth Wealth + rain * productivity * (L - Lw) + wages * Lw
         set past_wealth replace-item counts past_wealth (rain * productivity * (L - Lw) + wages * Lw)
+        set N_DD N_DD + 0.5
 
 
         set color blue
@@ -385,6 +387,7 @@ to update-payoff
       if [Final_action] of other-end = "D" and Final_action = "C"[
         set Wealth Wealth + rain * productivity * (L - Lc)
         set past_wealth replace-item counts past_wealth (rain * productivity * (L - Lc))
+        set N_DC N_DC + 1
         set color white
       ]
       if [Final_action] of other-end = "C" and Final_action = "D"[
@@ -397,12 +400,11 @@ to update-payoff
         set Wealth Wealth + factor-of-cooperation * rain * (productivity * L)
         set past_wealth replace-item counts past_wealth (factor-of-cooperation * rain * (productivity * L))
         set color green
-        set N_Contracts N_Contracts + 0.5
+        set N_CC N_CC + 0.5
         ask myself [set hidden? false]
       ]
     ]
 
-    if [final_action] of end1 = "D" or [final_action] of end2 = "D" [die]
   ]
   ask comunidad with [current-partner-contract ="N"][
     set Wealth Wealth + rain * productivity * (L - Lw) + wages * Lw
@@ -413,8 +415,11 @@ end
 
 ;###############################################################################################################
 to update-globals-reporters
-  set T_contracts T_contracts + 0.01 * N_Contracts
+  set T_CC T_CC + 0.01 * N_CC
   set T_CD T_CD + 0.01 * N_CD
+  set T_DC T_DC + 0.01 * N_DC
+  set T_DD T_DD + 0.01 * N_DD
+
   ; nw:set-context turtle-set comunidad link-set friends                                                           ;;layaout the network
   ;  print nw:mean-path-length
 
@@ -431,8 +436,10 @@ to GO
 ;profiler:start  ;;to check the computational time needed per procedude
 
   tick
-  set N_Contracts 0
+  set N_CC 0
   set N_CD 0
+  set N_DD 0
+  set N_DC 0
   if Lc + Lw > 1 [                                      ;maitain L = 1
     print (Lc + Lw)
     stop]
@@ -442,7 +449,7 @@ to GO
   final-decisions                                                     ;update decition to stay or leave the community after rainfall
   update-SCORE-trust                                                  ;
   update-payoff
-  layout
+  ;layout
   display                                                             ;display the families and the friendship links
   update-globals-reporters
   change-families-position
@@ -450,7 +457,6 @@ to GO
  ; profiler:stop          ;; stop ;;profiling
  ; print profiler:report  ;; view the results
  ; profiler:reset         ;; clear the data
-  ;print [N-time-parners] of Ncontracts
 
   counter
 end
@@ -631,7 +637,7 @@ temp_corr
 temp_corr
 0
 0.8
-0.3
+0
 0.1
 1
 NIL
@@ -664,7 +670,7 @@ p_good
 p_good
 0
 1
-0.5
+0.8
 0.1
 1
 NIL
@@ -726,7 +732,7 @@ wages
 wages
 0
 4
-4
+2.5
 0.1
 1
 NIL
@@ -763,11 +769,13 @@ NIL
 0.0
 10.0
 true
-false
+true
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot N_Contracts"
-"pen-1" 1.0 0 -5298144 true "" "plot N_CD"
+"CC" 1.0 0 -6759204 true "" "plot N_CC"
+"CD" 1.0 0 -11085214 true "" "plot N_CD"
+"DC" 1.0 0 -723837 true "" "plot N_DC"
+"DD" 1.0 0 -2674135 true "" "plot N_DD"
 
 CHOOSER
 346
@@ -777,7 +785,7 @@ CHOOSER
 enviromental-information
 enviromental-information
 "yes" "no"
-1
+0
 
 SLIDER
 10
@@ -788,7 +796,7 @@ var_R
 var_R
 0
 1
-0.6
+0.5
 0.1
 1
 NIL
@@ -1197,19 +1205,19 @@ NetLogo 5.2.1
 @#$#@#$#@
 @#$#@#$#@
 <experiments>
-  <experiment name="Experiment_wage_sweep_PT" repetitions="20" runMetricsEveryStep="false">
+  <experiment name="Experiment_wage_sweep_PT_B" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
+    <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
     <enumeratedValueSet variable="factor-of-cooperation">
       <value value="1.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Lw">
-      <value value="0.3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="temp_corr">
       <value value="0.3"/>
@@ -1230,6 +1238,9 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="Lc">
       <value value="0.2"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="Lw">
+      <value value="0.3"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="variability-Land-productivity">
       <value value="0.3"/>
     </enumeratedValueSet>
@@ -1241,11 +1252,14 @@ NetLogo 5.2.1
       <value value="&quot;risk-averse&quot;"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="correlated_enviroments_and_env_variability" repetitions="20" runMetricsEveryStep="false">
+  <experiment name="correlated_enviroments_and_env_variability_B" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
+    <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
@@ -1277,7 +1291,7 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="Lw">
       <value value="0.3"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="var_R" first="0.1" step="0.05" last="0.4"/>
+    <steppedValueSet variable="var_R" first="0.3" step="0.025" last="0.7"/>
     <enumeratedValueSet variable="decition-theory">
       <value value="&quot;prospect-theory&quot;"/>
     </enumeratedValueSet>
@@ -1286,12 +1300,14 @@ NetLogo 5.2.1
       <value value="&quot;risk-averse&quot;"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment-sweep_pgood-Evar" repetitions="20" runMetricsEveryStep="false">
+  <experiment name="experiment-sweep_pgood-Evar_B" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
     <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
@@ -1301,7 +1317,7 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="importance_trust">
       <value value="0.5"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="p_good" first="0.1" step="0.02" last="0.8"/>
+    <steppedValueSet variable="p_good" first="0.3" step="0.02" last="0.8"/>
     <enumeratedValueSet variable="variability-Land-productivity">
       <value value="0.3"/>
     </enumeratedValueSet>
@@ -1315,10 +1331,9 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="trust-decay">
       <value value="0.3"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="var_R">
-      <value value="0.1"/>
-      <value value="0.3"/>
-      <value value="0.5"/>
+    <steppedValueSet variable="var_R" first="0.4" step="0.05" last="0.7"/>
+    <enumeratedValueSet variable="type_of_farmers">
+      <value value="&quot;risk-seeking&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="enviromental-information">
       <value value="&quot;no&quot;"/>
@@ -1329,13 +1344,18 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="Lc">
       <value value="0.2"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="Lw">
+      <value value="0.3"/>
+    </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment_prospect_theory" repetitions="20" runMetricsEveryStep="false">
+  <experiment name="experiment_EU_pgood" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
     <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
@@ -1344,11 +1364,9 @@ NetLogo 5.2.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="enviromental-information">
       <value value="&quot;yes&quot;"/>
-      <value value="&quot;no&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="temp_corr">
       <value value="0"/>
-      <value value="0.6"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="trust-decay">
       <value value="0.3"/>
@@ -1356,19 +1374,17 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="importance_trust">
       <value value="0.5"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="p_good" first="0.1" step="0.05" last="0.8"/>
+    <steppedValueSet variable="p_good" first="0.1" step="0.025" last="0.8"/>
     <enumeratedValueSet variable="wages">
       <value value="2.5"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="decition-theory">
-      <value value="&quot;prospect-theory&quot;"/>
+      <value value="&quot;EU&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="variability-Land-productivity">
       <value value="0.3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="var_R">
-      <value value="0.1"/>
-      <value value="0.3"/>
       <value value="0.5"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Lc">
@@ -1379,23 +1395,27 @@ NetLogo 5.2.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="type_of_farmers">
       <value value="&quot;risk-seeking&quot;"/>
-      <value value="&quot;risk-averse&quot;"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment_PT_env-variability" repetitions="20" runMetricsEveryStep="false">
+  <experiment name="experiment_EU_env-variability_B" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
     <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
     <enumeratedValueSet variable="enviromental-information">
-      <value value="&quot;no&quot;"/>
+      <value value="&quot;yes&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="Lc">
       <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Lw">
+      <value value="0.3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="temp_corr">
       <value value="0.2"/>
@@ -1408,10 +1428,6 @@ NetLogo 5.2.1
     </enumeratedValueSet>
     <enumeratedValueSet variable="type_of_farmers">
       <value value="&quot;risk-seeking&quot;"/>
-      <value value="&quot;risk-averse&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Lw">
-      <value value="0.3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="decition-theory">
       <value value="&quot;prospect-theory&quot;"/>
@@ -1428,14 +1444,16 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="wages">
       <value value="2.5"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="var_R" first="0" step="0.01" last="0.6"/>
+    <steppedValueSet variable="var_R" first="0.1" step="0.02" last="0.8"/>
   </experiment>
   <experiment name="experiment-LaborAlocation" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
     <metric>T_CD</metric>
+    <metric>T_DC</metric>
+    <metric>T_DD</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
@@ -1460,16 +1478,8 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="temp_corr">
       <value value="0.8"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="Lw">
-      <value value="0"/>
-      <value value="0.0010"/>
-      <value value="0.3333"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Lc">
-      <value value="0"/>
-      <value value="0.0010"/>
-      <value value="0.3333"/>
-    </enumeratedValueSet>
+    <steppedValueSet variable="Lw" first="0" step="0.03" last="0.3333"/>
+    <steppedValueSet variable="Lc" first="0" step="0.03" last="0.3333"/>
     <enumeratedValueSet variable="type_of_farmers">
       <value value="&quot;risk-averse&quot;"/>
     </enumeratedValueSet>
@@ -1483,30 +1493,23 @@ NetLogo 5.2.1
       <value value="0.4"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="RVar_vs_pgood" repetitions="20" runMetricsEveryStep="false">
+  <experiment name="temporal_correlation" repetitions="20" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <timeLimit steps="100"/>
-    <metric>T_contracts</metric>
+    <metric>T_CC</metric>
     <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
     <metric>mean [wealth] of comunidad</metric>
     <metric>mean [reputation] of comunidad</metric>
     <metric>mean [trust] of friends</metric>
-    <enumeratedValueSet variable="wages">
-      <value value="2.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="importance_trust">
-      <value value="0.5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Lw">
+    <enumeratedValueSet variable="trust-decay">
       <value value="0.3"/>
-    </enumeratedValueSet>
-    <steppedValueSet variable="p_good" first="0.2" step="0.02" last="0.8"/>
-    <enumeratedValueSet variable="Lc">
-      <value value="0.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="type_of_farmers">
       <value value="&quot;risk-seeking&quot;"/>
+      <value value="&quot;risk-averse&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="decition-theory">
       <value value="&quot;prospect-theory&quot;"/>
@@ -1514,18 +1517,80 @@ NetLogo 5.2.1
     <enumeratedValueSet variable="factor-of-cooperation">
       <value value="1.5"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="trust-decay">
+    <enumeratedValueSet variable="p_good">
+      <value value="0.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Lw">
       <value value="0.3"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="var_R" first="0.3" step="0.02" last="0.8"/>
+    <steppedValueSet variable="temp_corr" first="0" step="0.01" last="0.7"/>
+    <enumeratedValueSet variable="wages">
+      <value value="2.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="var_R">
+      <value value="0.5"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="variability-Land-productivity">
       <value value="0.3"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="temp_corr">
-      <value value="0.4"/>
+    <enumeratedValueSet variable="Lc">
+      <value value="0.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="enviromental-information">
       <value value="&quot;no&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="importance_trust">
+      <value value="0.5"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment_PT_pgood" repetitions="20" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <timeLimit steps="100"/>
+    <metric>T_CC</metric>
+    <metric>T_CD</metric>
+    <metric>T_DD</metric>
+    <metric>T_DC</metric>
+    <metric>mean [wealth] of comunidad</metric>
+    <metric>mean [reputation] of comunidad</metric>
+    <metric>mean [trust] of friends</metric>
+    <enumeratedValueSet variable="factor-of-cooperation">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="enviromental-information">
+      <value value="&quot;yes&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="temp_corr">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="trust-decay">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="importance_trust">
+      <value value="0.5"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="p_good" first="0.1" step="0.025" last="0.8"/>
+    <enumeratedValueSet variable="wages">
+      <value value="2.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="decition-theory">
+      <value value="&quot;prospect-theory&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="variability-Land-productivity">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="var_R">
+      <value value="0.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Lc">
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Lw">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="type_of_farmers">
+      <value value="&quot;risk-seeking&quot;"/>
+      <value value="&quot;risk-averse&quot;"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
